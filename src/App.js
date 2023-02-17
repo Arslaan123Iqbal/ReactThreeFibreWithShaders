@@ -1,88 +1,86 @@
-import { motion } from "framer-motion";
-import { useEffect, useRef } from "react";
-import { useInView } from "react-intersection-observer";
-import "./App.css"
-const imagePaths = [
-  { path: "./0.jpg", alt: "Image 1" },
-  { path: "./1.jpg", alt: "Image 2" },
-  { path: "./2.jpg", alt: "Image 3" },
-  { path: "./3.jpg", alt: "Image 4" },
-];
+import * as THREE from "three";
+import React, { useRef, Suspense } from "react";
+import { Canvas, extend, useFrame, useLoader } from "@react-three/fiber";
+import { shaderMaterial } from "@react-three/drei";
+import glsl from "babel-plugin-glsl/macro";
+import "./App.css";
 
-
-const data = [
+const WaveShaderMaterial = shaderMaterial(
+  // Uniform
   {
-    title:"./1.jpg",
-    theme:{background:"yellow",text:"white"}
-
+    uTime: 0,
+    uColor: new THREE.Color(0.0, 0.0, 0.0),
+    uTexture: new THREE.Texture(),
   },
-  {
-    title:"./2.jpg",
-    theme:{background:"blue",text:"white"}
+  // Vertex Shader
+  glsl`
+    precision mediump float;
+    varying vec2 vUv;
+    varying float vWave;
+    uniform float uTime;
+    #pragma glslify: snoise3 = require(glsl-noise/simplex/3d);
+    void main() {
+      vUv = uv;
+      vec3 pos = position;
+      float noiseFreq = 2.0;
+      float noiseAmp = 0.4;
+      vec3 noisePos = vec3(pos.x * noiseFreq + uTime, pos.y, pos.z);
+      pos.z += snoise3(noisePos) * noiseAmp;
+      vWave = pos.z;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);  
+    }
+  `,
+  // Fragment Shader
+  glsl`
+    precision mediump float;
+    uniform vec3 uColor;
+    uniform float uTime;
+    uniform sampler2D uTexture;
+    varying vec2 vUv;
+    varying float vWave;
+    void main() {
+      float wave = vWave * 0.2;
+      vec3 texture = texture2D(uTexture, vUv + wave).rgb;
+      gl_FragColor = vec4(texture, 1.0); 
+    }
+  `
+);
 
-  },
-  {
-    title:"./0.jpg",
-    theme:{background:"red",text:"white"}
+extend({ WaveShaderMaterial });
 
-  },
-  {
-    title:"./3.jpg",
-    theme:{background:"lightpink",text:"white"}
+const Wave = () => {
+  const ref = useRef();
+  useFrame(({ clock }) => (ref.current.uTime = clock.getElapsedTime()));
 
-  },
-  {
-    title:"./2.jpg",
-    theme:{background:"blue",text:"white"}
+  const [image] = useLoader(THREE.TextureLoader, [
+    "https://images.unsplash.com/photo-1604011092346-0b4346ed714e?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=1534&q=80",
+  ]);
 
-  },
-  {
-    title:"./0.jpg",
-    theme:{background:"red",text:"white"}
-
-  },
-  {
-    title:"./3.jpg",
-    theme:{background:"lightpink",text:"white"}
-
-  },
-]
-
-function App() {
-  const groupRef = useRef([]);
-
-  const onScroll = (el) => {
-    const styles = groupRef.current
-      .map((group, i) => {
-        const rect = group.getBoundingClientRect();
-        return { group, rect };
-      })
-      .find((group) => group.rect.bottom >= window.innerHeight * 0.5);
-    document.body.style.backgroundColor = `${styles.group.getAttribute('data-bgcolor')}`;
-    document.body.style.color = `${styles.group.getAttribute('data-txtcolor')}`;
-  };
-  useEffect(() => {
-    window.addEventListener("scroll", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-    };
-  }, []);
   return (
-    <div>
-      {data.map((group, i) => (
-        <div
-        className="main"
-          ref={(el) => (groupRef.current[i] = el)}
-          style={{ height: "50vh" }}
-          data-bgcolor={group.theme.background}
-          data-txtcolor={group.theme.text}
-        >
-          <img className="car" src={group.title} height={500} width={500}/>
-        </div>
-      ))}
-    </div>
+    <mesh>
+      <planeBufferGeometry args={[0.4, 0.6, 16, 16]} />
+      <waveShaderMaterial ref={ref} uTexture={image} />
+    </mesh>
   );
-}
+};
 
+const Scene = () => {
+  return (
+    <Canvas camera={{ fov: 15, position: [0, 0, 5] }}>
+      <Suspense fallback={null}>
+        <Wave />
+      </Suspense>
+    </Canvas>
+  );
+};
+
+const App = () => {
+  return (
+    <>
+      <h1>POMADA MODELADORA</h1>
+      <Scene />
+    </>
+  );
+};
 
 export default App;
